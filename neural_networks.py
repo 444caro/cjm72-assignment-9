@@ -15,6 +15,8 @@ class MLP:
         np.random.seed(0)
         self.lr = lr # learning rate
         self.activation_fn = activation # activation function
+        self.activation = self._activation()
+        self.activation_derivative = self._activation_derivative()
         # define layers and initialize weights
         # Initialize weights and biases
         self.W1 = np.random.randn(input_dim, hidden_dim) * 0.1
@@ -22,31 +24,31 @@ class MLP:
         self.W2 = np.random.randn(hidden_dim, output_dim) * 0.1
         self.b2 = np.zeros((1, output_dim))
     
-        # Storage for activations and gradients
-        self.z1 = None  # Pre-activation of hidden layer
-        self.a1 = None  # Post-activation (hidden features)
-        self.z2 = None  # Pre-activation of output layer
-        self.a2 = None  # Output layer activations (predictions)
-        self.grads = {}  # To store gradients for visualization
 
-    def _activation(self, z):
+
+        self.hidden = None 
+        self.grads = None
+        # Storage for activations and gradients
+
+
+    def _activation(self):
         if self.activation_fn == 'tanh':
-            return np.tanh(z)
+            return lambda x: np.tanh(x)
         elif self.activation_fn == 'relu':
-            return np.maximum(0, z)
+            return lambda x: np.maximum(0, x)
         elif self.activation_fn == 'sigmoid':
-            return 1 / (1 + np.exp(-z))
+            return lambda x: 1/(1+np.exp(-x))
         else:
             raise ValueError("Unsupported activation function")
 
-    def _activation_derivative(self, z):
+    def _activation_derivative(self):
         if self.activation_fn == 'tanh':
-            return 1 - np.tanh(z) ** 2
+            return lambda x: 1-np.tanh(x)**2
         elif self.activation_fn == 'relu':
-            return (z > 0).astype(float)
+            return lambda x: (x>0).astype(float)
         elif self.activation_fn == 'sigmoid':
-            sigmoid = 1 / (1 + np.exp(-z))
-            return sigmoid * (1 - sigmoid)
+            sigmoid = self._activation
+            return lambda x: sigmoid(x)*(1-sigmoid(x))
         else:
             raise ValueError("Unsupported activation function")
 
@@ -56,41 +58,42 @@ class MLP:
         #  forward pass, apply layers to input X
         #  store activations for visualization
         # Forward pass: Input -> Hidden Layer -> Output Layer
-        self.z1 = X @ self.W1 + self.b1
-        self.a1 = self._activation(self.z1)  # Apply activation function
+        self.z1 = np.dot(X,self.W1)+self.b1
+        self.a1 = self.activation(self.z1)
         
-        self.z2 = self.a1 @ self.W2 + self.b2
+        self.z2 = np.dot(self.a1, self.W2)+self.b2
         self.a2 = 1 / (1 + np.exp(-self.z2))  # Sigmoid for output layer
-        
+        self.hidden = self.a1
         return self.a2
    
 
     def backward(self, X, y):
         # Compute gradients for backpropagation
         m = X.shape[0]  # Number of samples
-        
         # Gradient for output layer
         dz2 = self.a2 - y  # Derivative of cross-entropy loss w.r.t. z2
-        self.grads['W2'] = (self.a1.T @ dz2) / m
-        self.grads['b2'] = np.sum(dz2, axis=0, keepdims=True) / m
-        
+        dw2 = np.dot(self.a1.T, dz2)/m
+        db2 = np.sum(dz2,axis=0,keepdims=True)/m
+
         # Gradient for hidden layer
-        da1 = dz2 @ self.W2.T
-        dz1 = da1 * self._activation_derivative(self.z1)
-        self.grads['W1'] = (X.T @ dz1) / m
-        self.grads['b1'] = np.sum(dz1, axis=0, keepdims=True) / m
+        da1 = np.dot(dz2,self.W2.T)
+        dz1 = da1 * self.activation_derivative(self.z1)
+        dw1 = np.dot(X.T, dz1)/m
+        db1 = np.sum(dz1, axis=0,keepdims=True)/m
         
+        #store gradients 
+        self.grads = {"W1": np.linalg.norm(dw1), "W2": np.linalg.norm(dw2)}
         # Update weights and biases
-        self.W1 -= self.lr * self.grads['W1']
-        self.b1 -= self.lr * self.grads['b1']
-        self.W2 -= self.lr * self.grads['W2']
-        self.b2 -= self.lr * self.grads['b2']
+        self.W1 -= self.lr * dw1
+        self.b1 -= self.lr * db1
+        self.W2 -= self.lr * dw2
+        self.b2 -= self.lr * db2
 
 def generate_data(n_samples=100):
     np.random.seed(0)
     # Generate input
     X = np.random.randn(n_samples, 2)
-    y = (X[:, 0] ** 2 + X[:, 1] ** 2 > 1).astype(int) * 2 - 1  # Circular boundary
+    y = (X[:, 0] ** 2 + X[:, 1] ** 2 > 1).astype(int)  # Circular boundary
     y = y.reshape(-1, 1)
     return X, y
 
@@ -107,37 +110,25 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
         mlp.backward(X, y)
         
     # Plot hidden features
-    hidden_features = mlp.a1
+    hidden_features = mlp.hidden
     ax_hidden.scatter(hidden_features[:, 0], hidden_features[:, 1], hidden_features[:, 2], c=y.ravel(), cmap='bwr', alpha=0.7)
-    ax_hidden.set_title("Hidden Space Features")
-    ax_hidden.set_xlabel("Neuron 1")
-    ax_hidden.set_ylabel("Neuron 2")
-    ax_hidden.set_zlabel("Neuron 3")
+    ax_hidden.set_title("Hidden Layer Activations")
 
     # Decision boundary in input space
     x1 = np.linspace(-2, 2, 100)
     x2 = np.linspace(-2, 2, 100)
     xx1, xx2 = np.meshgrid(x1, x2)
     grid = np.c_[xx1.ravel(), xx2.ravel()]
-    predictions = mlp.forward(grid)
-    zz = predictions.reshape(xx1.shape)
-    ax_input.contourf(xx1, xx2, zz, levels=[0, 0.5, 1], cmap='bwr', alpha=0.3)
+    predictions = mlp.forward(grid).reshape(xx1.shape)
+    ax_input.contourf(xx1, xx2, predictions, levels=[0, 0.5, 1], cmap='bwr', alpha=0.5)
     ax_input.scatter(X[:, 0], X[:, 1], c=y.ravel(), cmap='bwr', edgecolor='k')
     ax_input.set_title("Decision Boundary in Input Space")
-    ax_input.set_xlabel("X1")
-    ax_input.set_ylabel("X2")
+
     
     # Visualize gradients
-    gradient_magnitudes = np.linalg.norm(mlp.grads['W1'], axis=1)
-    for i in range(mlp.W1.shape[0]):
-        circle = Circle((X[i, 0], X[i, 1]), radius=0.1, edgecolor='black', facecolor='none', lw=gradient_magnitudes[i])
-        ax_gradient.add_patch(circle)
-    ax_gradient.set_xlim([-2, 2])
-    ax_gradient.set_ylim([-2, 2])
+    gradient_magnitudes = mlp.grads["W1"]
+    ax_gradient.bar(["W1","W2"], [gradient_magnitudes,mlp.grads["W2"]])
     ax_gradient.set_title("Gradients Visualization")
-    ax_gradient.set_xlabel("X1")
-    ax_gradient.set_ylabel("X2")
-    # The edge thickness visually represents the magnitude of the gradient
 
 
 def visualize(activation, lr, step_num):
