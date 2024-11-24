@@ -19,9 +19,9 @@ class MLP:
         self.activation_derivative = self._activation_derivative()
         # define layers and initialize weights
         # Initialize weights and biases
-        self.W1 = np.random.randn(input_dim, hidden_dim) * 0.1
+        self.W1 = np.random.randn(input_dim, hidden_dim) * np.sqrt(2/input_dim)
         self.b1 = np.zeros((1, hidden_dim))
-        self.W2 = np.random.randn(hidden_dim, output_dim) * 0.1
+        self.W2 = np.random.randn(hidden_dim, output_dim) * np.sqrt(2/hidden_dim)
         self.b2 = np.zeros((1, output_dim))
     
 
@@ -29,6 +29,8 @@ class MLP:
         self.hidden = None 
         self.grads = None
         # Storage for activations and gradients
+        self.activations = {}  # **Added storage for activations for debugging**
+        self.gradients = {}  # **Added storage for gradients for visualization**
 
 
     def _activation(self):
@@ -55,45 +57,55 @@ class MLP:
 
     
     def forward(self, X):
-        #  forward pass, apply layers to input X
-        #  store activations for visualization
-        # Forward pass: Input -> Hidden Layer -> Output Layer
+        #  forward pass, apply layers to input X, store activations for visualization
+        # First layer: Input -> Hidden
         self.z1 = np.dot(X,self.W1)+self.b1
         self.a1 = self.activation(self.z1)
-        
+        self.activations['Z1'] = self.z1  
+        self.activations['A1'] = self.a1
+
+        # Second layer: Hidden -> Output
         self.z2 = np.dot(self.a1, self.W2)+self.b2
-        self.a2 = 1 / (1 + np.exp(-self.z2))  # Sigmoid for output layer
-        self.hidden = self.a1
+        self.a2 = self.z2
+        self.activations['Z2'] = self.z2  
+        self.activations['A2'] = self.a2
         return self.a2
    
 
     def backward(self, X, y):
-        # Compute gradients for backpropagation
-        m = X.shape[0]  # Number of samples
-        # Gradient for output layer
-        dz2 = self.a2 - y  # Derivative of cross-entropy loss w.r.t. z2
-        dw2 = np.dot(self.a1.T, dz2)/m
-        db2 = np.sum(dz2,axis=0,keepdims=True)/m
+        m = y.shape[0]  
 
-        # Gradient for hidden layer
-        da1 = np.dot(dz2,self.W2.T)
-        dz1 = da1 * self.activation_derivative(self.z1)
-        dw1 = np.dot(X.T, dz1)/m
-        db1 = np.sum(dz1, axis=0,keepdims=True)/m
+        # Gradient for output layer
+        delta2 = self.a2 - y  # Derivative of cross-entropy loss w.r.t. z2
+        dW2 = np.dot(self.a1.T, delta2)/m
+        db2 = np.sum(delta2,axis=0,keepdims=True)/m
+
+        # Backpropagate to hidden layer 
+        delta1 = np.dot(delta2,self.W2.T) * self.activation_derivative(self.z1)
+        dW1 = np.dot(X.T, delta1)/m
+        db1 = np.sum(delta1, axis=0,keepdims=True)/m
         
-        #store gradients 
-        self.grads = {"W1": np.linalg.norm(dw1), "W2": np.linalg.norm(dw2)}
         # Update weights and biases
-        self.W1 -= self.lr * dw1
-        self.b1 -= self.lr * db1
-        self.W2 -= self.lr * dw2
+        self.W2 -= self.lr * dW2
         self.b2 -= self.lr * db2
+        self.W1 -= self.lr * dW1
+        self.b1 -= self.lr * db1
+
+        # Store gradients for visualization
+        self.gradients = {  
+            'dW2': dW2,
+            'db2': db2,
+            'dW1': dW1,
+            'db1': db1,
+            'delta2': delta2,
+            'delta1': delta1,
+        }
 
 def generate_data(n_samples=100):
     np.random.seed(0)
     # Generate input
     X = np.random.randn(n_samples, 2)
-    y = (X[:, 0] ** 2 + X[:, 1] ** 2 > 1).astype(int)  # Circular boundary
+    y = (X[:, 0] ** 2 + X[:, 1] ** 2 > 1).astype(int)*2-1  # Circular boundary
     y = y.reshape(-1, 1)
     return X, y
 
@@ -110,25 +122,91 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
         mlp.backward(X, y)
         
     # Plot hidden features
-    hidden_features = mlp.hidden
-    ax_hidden.scatter(hidden_features[:, 0], hidden_features[:, 1], hidden_features[:, 2], c=y.ravel(), cmap='bwr', alpha=0.7)
-    ax_hidden.set_title("Hidden Layer Activations")
+    hidden_features = mlp.activations['A1']
+    ax_hidden.scatter(
+        hidden_features[:, 0],
+        hidden_features[:, 1],
+        c=y.ravel(),
+        cmap='bwr',
+        alpha=0.7
+    )
+    ax_hidden.set_title("Hidden Layer Features")
+    ax_hidden.set_xlim(-2, 2)
+    ax_hidden.set_ylim(-2, 2)
 
     # Decision boundary in input space
-    x1 = np.linspace(-2, 2, 100)
-    x2 = np.linspace(-2, 2, 100)
-    xx1, xx2 = np.meshgrid(x1, x2)
-    grid = np.c_[xx1.ravel(), xx2.ravel()]
-    predictions = mlp.forward(grid).reshape(xx1.shape)
-    ax_input.contourf(xx1, xx2, predictions, levels=[0, 0.5, 1], cmap='bwr', alpha=0.5)
+    x_min, x_max = -3, 3
+    y_min, y_max = -3, 3
+    ax_input.set_xlim(x_min, x_max)
+    ax_input.set_ylim(y_min, y_max)
+    xx, yy = np.meshgrid(
+        np.linspace(x_min, x_max, 100),
+        np.linspace(y_min, y_max, 100)
+    )
+    grid = np.c_[xx.ravel(), yy.ravel()]
+    zz = mlp.forward(grid).reshape(xx.shape)
+    ax_input.contourf(xx, yy, zz, levels=20, cmap='bwr', alpha=0.6)
     ax_input.scatter(X[:, 0], X[:, 1], c=y.ravel(), cmap='bwr', edgecolor='k')
-    ax_input.set_title("Decision Boundary in Input Space")
+    ax_input.set_title("Input Space Decision Boundary")
 
-    
-    # Visualize gradients
-    gradient_magnitudes = mlp.grads["W1"]
-    ax_gradient.bar(["W1","W2"], [gradient_magnitudes,mlp.grads["W2"]])
-    ax_gradient.set_title("Gradients Visualization")
+
+    # Visualize the network as nodes and edges
+    input_layer_size = mlp.W1.shape[0]
+    hidden_layer_size = mlp.W1.shape[1]
+    output_layer_size = mlp.W2.shape[1]
+    # Generate positions for the nodes
+    nodes_input = np.array([[x, 0.8] for x in np.linspace(0.2, 0.8, input_layer_size)])
+    nodes_hidden = np.array([[x, 0.5] for x in np.linspace(0.2, 0.8, hidden_layer_size)])
+    nodes_output = np.array([[0.5, 0.2]])  # For single output neuron
+    # Plot nodes and add labels
+    for idx, node in enumerate(nodes_input):
+        ax_gradient.add_patch(Circle(node, radius=0.03, color='blue'))
+        ax_gradient.text(
+            node[0], node[1] + 0.05,
+            f"Input {idx+1}",
+            ha='center',
+            va='bottom',
+            fontsize=10
+        )
+    for idx, node in enumerate(nodes_hidden):
+        ax_gradient.add_patch(Circle(node, radius=0.03, color='green'))
+        ax_gradient.text(
+            node[0], node[1] + 0.05,
+            f"Hidden {idx+1}",
+            ha='center',
+            va='bottom',
+            fontsize=10
+        )
+    for idx, node in enumerate(nodes_output):
+        ax_gradient.add_patch(Circle(node, radius=0.03, color='red'))
+        ax_gradient.text(
+            node[0], node[1] - 0.05,
+            f"Output {idx+1}",
+            ha='center',
+            va='top',
+            fontsize=10
+        )
+    # Plot edges with linewidth proportional to gradient magnitude
+    for i in range(input_layer_size):
+        for j in range(hidden_layer_size):
+            gradient_magnitude = np.abs(mlp.gradients['dW1'][i, j])
+            ax_gradient.plot(
+                [nodes_input[i, 0], nodes_hidden[j, 0]],
+                [nodes_input[i, 1], nodes_hidden[j, 1]],
+                'k-',
+                linewidth=gradient_magnitude * 100
+            )
+    for i in range(hidden_layer_size):
+        for j in range(output_layer_size):
+            gradient_magnitude = np.abs(mlp.gradients['dW2'][i, j])
+            ax_gradient.plot(
+                [nodes_hidden[i, 0], nodes_output[j, 0]],
+                [nodes_hidden[i, 1], nodes_output[j, 1]],
+                'k-',
+                linewidth=gradient_magnitude * 100
+            )
+    ax_gradient.axis('off')
+    ax_gradient.set_title("Gradient Visualization")
 
 
 def visualize(activation, lr, step_num):
