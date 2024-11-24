@@ -49,8 +49,7 @@ class MLP:
         elif self.activation_fn == 'relu':
             return lambda x: (x>0).astype(float)
         elif self.activation_fn == 'sigmoid':
-            sigmoid = self._activation
-            return lambda x: sigmoid(x)*(1-sigmoid(x))
+            return lambda x: self.activation(x) * (1 - self.activation(x))
         else:
             raise ValueError("Unsupported activation function")
 
@@ -76,7 +75,7 @@ class MLP:
         m = y.shape[0]  
 
         # Gradient for output layer
-        delta2 = self.a2 - y  # Derivative of cross-entropy loss w.r.t. z2
+        delta2 = self.a2 - y  
         dW2 = np.dot(self.a1.T, delta2)/m
         db2 = np.sum(delta2,axis=0,keepdims=True)/m
 
@@ -131,28 +130,50 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
         cmap='bwr',
         alpha=0.7
     )
-    # Add the decision hyperplane in the hidden space
-    x_min, x_max = -5, 5
-    y_min, y_max = -5, 5  # Adjust to match the example's axis limits
-    xx, yy = np.meshgrid(
-        np.linspace(x_min, x_max, 100),
-        np.linspace(y_min, y_max, 100)
-    )
-    hidden_grid = np.c_[xx.ravel(), yy.ravel()]
-    # Transform the hidden_grid through the first layer
-    hidden_transformed = mlp.activation(np.dot(hidden_grid, mlp.W1) + mlp.b1)
-    # Compute decision boundary for the hidden space
-    hidden_decision = np.dot(hidden_transformed, mlp.W2) + mlp.b2
-    hidden_decision = hidden_decision.reshape(xx.shape)
-    # Plot the decision boundary (hyperplane)
-    ax_hidden.contourf(xx, yy, hidden_decision, levels=20, cmap='bwr', alpha=0.3)
-    ax_hidden.set_xlim(x_min, x_max)
-    ax_hidden.set_ylim(y_min, y_max)
+    if mlp.activation_fn == 'sigmoid':
+        ax_hidden.set_xlim([0, 1])
+        ax_hidden.set_ylim([0, 1])
+        ax_hidden.set_zlim([0, 1])
+    elif mlp.activation_fn == 'tanh':
+        ax_hidden.set_xlim([-1, 1])
+        ax_hidden.set_ylim([-1, 1])
+        ax_hidden.set_zlim([-1, 1])
+    elif mlp.activation_fn == 'relu':
+        max_val = np.max(hidden_features)
+        min_val = np.min(hidden_features)
+        buffer = 0.1 * (max_val - min_val)
+        ax_hidden.set_xlim([min_val - buffer, max_val + buffer])
+        ax_hidden.set_ylim([min_val - buffer, max_val + buffer])
+        ax_hidden.set_zlim([min_val - buffer, max_val + buffer])
+
+   # Generate a grid for visualizing hidden layer transformations
+    grid_ran = np.linspace(-3, 3, 20)
+    X_grid, Y_grid = np.meshgrid(grid_ran, grid_ran)
+    grid_points = np.c_[X_grid.ravel(), Y_grid.ravel()]
+
+    # Compute pre-activation values for the first layer
+    Z1_grid = np.dot(grid_points, mlp.W1) + mlp.b1
+
+    # Apply activation function
+    if mlp.activation_fn == 'tanh':
+        A1_grid = np.tanh(Z1_grid)
+    elif mlp.activation_fn == 'relu':
+        A1_grid = np.maximum(0, Z1_grid)
+    elif mlp.activation_fn == 'sigmoid':
+        A1_grid = 1 / (1 + np.exp(-Z1_grid))
+
+    # Reshape for 3D surface plotting
+    H1 = A1_grid[:, 0].reshape(X_grid.shape)
+    H2 = A1_grid[:, 1].reshape(Y_grid.shape)
+    H3 = A1_grid[:, 2].reshape(Y_grid.shape)
+
+    # Plot 3D surface
+    ax_hidden.plot_surface(H1, H2, H3, alpha=0.25, color='lightgrey', edgecolor='darkgrey')
     ax_hidden.set_title(f"Hidden Layer Features at Step {step_number}")
 
     # Decision boundary in input space
-    x_min, x_max = -3, 3
-    y_min, y_max = -3, 3
+    x_min, x_max = X[:, 0].min() - 1, X[:, 0].max() + 1
+    y_min, y_max = X[:, 1].min() - 1, X[:, 1].max() + 1
     ax_input.set_xlim(x_min, x_max)
     ax_input.set_ylim(y_min, y_max)
     xx, yy = np.meshgrid(
@@ -161,10 +182,9 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
     )
     grid = np.c_[xx.ravel(), yy.ravel()]
     zz = mlp.forward(grid).reshape(xx.shape)
-    ax_input.contourf(xx, yy, zz, levels=20, cmap='bwr', alpha=0.6)
+    ax_input.contourf(xx, yy, zz, levels=[-1, 0, 0.5, 1], cmap='bwr', alpha=0.6)
     ax_input.scatter(X[:, 0], X[:, 1], c=y.ravel(), cmap='bwr', edgecolor='k')
     ax_input.set_title(f"Input Space Decision Boundary at Step {step_number}")
-
 
     # Visualize the gradients 
     input_layer_size = mlp.W1.shape[0]
@@ -174,7 +194,7 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
     nodes_hidden = np.array([[x, 0.5] for x in np.linspace(0.2, 0.8, hidden_layer_size)])
     nodes_output = np.array([[0.5, 0.2]])  # For single output neuron
     for i, node in enumerate(nodes_input):
-        ax_gradient.add_patch(Circle(node, radius=0.03, color='blue'))
+        ax_gradient.add_patch(Circle(node, radius=0.03, color='red'))
         ax_gradient.text(
             node[0], node[1] + 0.05,
             f"x {i+1}",
@@ -192,7 +212,7 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
             fontsize=10
         )
     for i, node in enumerate(nodes_output):
-        ax_gradient.add_patch(Circle(node, radius=0.03, color='red'))
+        ax_gradient.add_patch(Circle(node, radius=0.03, color='blue'))
         ax_gradient.text(
             node[0], node[1] - 0.05,
             f"y {i+1}",
