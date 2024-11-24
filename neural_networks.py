@@ -120,7 +120,8 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
         # Perform a training step
         mlp.forward(X)
         mlp.backward(X, y)
-        
+    
+    step_number = frame * 10  # Calculate the actual step number
     # Plot hidden features
     hidden_features = mlp.activations['A1']
     ax_hidden.scatter(
@@ -130,9 +131,24 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
         cmap='bwr',
         alpha=0.7
     )
-    ax_hidden.set_title("Hidden Layer Features")
-    ax_hidden.set_xlim(-2, 2)
-    ax_hidden.set_ylim(-2, 2)
+    # Add the decision hyperplane in the hidden space
+    x_min, x_max = -5, 5
+    y_min, y_max = -5, 5  # Adjust to match the example's axis limits
+    xx, yy = np.meshgrid(
+        np.linspace(x_min, x_max, 100),
+        np.linspace(y_min, y_max, 100)
+    )
+    hidden_grid = np.c_[xx.ravel(), yy.ravel()]
+    # Transform the hidden_grid through the first layer
+    hidden_transformed = mlp.activation(np.dot(hidden_grid, mlp.W1) + mlp.b1)
+    # Compute decision boundary for the hidden space
+    hidden_decision = np.dot(hidden_transformed, mlp.W2) + mlp.b2
+    hidden_decision = hidden_decision.reshape(xx.shape)
+    # Plot the decision boundary (hyperplane)
+    ax_hidden.contourf(xx, yy, hidden_decision, levels=20, cmap='bwr', alpha=0.3)
+    ax_hidden.set_xlim(x_min, x_max)
+    ax_hidden.set_ylim(y_min, y_max)
+    ax_hidden.set_title(f"Hidden Layer Features at Step {step_number}")
 
     # Decision boundary in input space
     x_min, x_max = -3, 3
@@ -147,7 +163,7 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
     zz = mlp.forward(grid).reshape(xx.shape)
     ax_input.contourf(xx, yy, zz, levels=20, cmap='bwr', alpha=0.6)
     ax_input.scatter(X[:, 0], X[:, 1], c=y.ravel(), cmap='bwr', edgecolor='k')
-    ax_input.set_title("Input Space Decision Boundary")
+    ax_input.set_title(f"Input Space Decision Boundary at Step {step_number}")
 
 
     # Visualize the gradients 
@@ -161,7 +177,7 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
         ax_gradient.add_patch(Circle(node, radius=0.03, color='blue'))
         ax_gradient.text(
             node[0], node[1] + 0.05,
-            f"Input {i+1}",
+            f"x {i+1}",
             ha='center',
             va='bottom',
             fontsize=10
@@ -170,7 +186,7 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
         ax_gradient.add_patch(Circle(node, radius=0.03, color='green'))
         ax_gradient.text(
             node[0], node[1] + 0.05,
-            f"Hidden {i+1}",
+            f"h {i+1}",
             ha='center',
             va='bottom',
             fontsize=10
@@ -179,7 +195,7 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
         ax_gradient.add_patch(Circle(node, radius=0.03, color='red'))
         ax_gradient.text(
             node[0], node[1] - 0.05,
-            f"Output {i+1}",
+            f"y {i+1}",
             ha='center',
             va='top',
             fontsize=10
@@ -203,7 +219,7 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
                 linewidth=gradient_magnitude * 100
             )
     ax_gradient.axis('off')
-    ax_gradient.set_title("Gradient Visualization")
+    ax_gradient.set_title(f"Gradient Visualization at Step {step_number}")
 
 
 def visualize(activation, lr, step_num):
