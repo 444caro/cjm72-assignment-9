@@ -150,43 +150,40 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
     ax_input.set_title("Input Space Decision Boundary")
 
 
-    # Visualize the network as nodes and edges
+    # Visualize the gradients 
     input_layer_size = mlp.W1.shape[0]
     hidden_layer_size = mlp.W1.shape[1]
     output_layer_size = mlp.W2.shape[1]
-    # Generate positions for the nodes
     nodes_input = np.array([[x, 0.8] for x in np.linspace(0.2, 0.8, input_layer_size)])
     nodes_hidden = np.array([[x, 0.5] for x in np.linspace(0.2, 0.8, hidden_layer_size)])
     nodes_output = np.array([[0.5, 0.2]])  # For single output neuron
-    # Plot nodes and add labels
-    for idx, node in enumerate(nodes_input):
+    for i, node in enumerate(nodes_input):
         ax_gradient.add_patch(Circle(node, radius=0.03, color='blue'))
         ax_gradient.text(
             node[0], node[1] + 0.05,
-            f"Input {idx+1}",
+            f"Input {i+1}",
             ha='center',
             va='bottom',
             fontsize=10
         )
-    for idx, node in enumerate(nodes_hidden):
+    for i, node in enumerate(nodes_hidden):
         ax_gradient.add_patch(Circle(node, radius=0.03, color='green'))
         ax_gradient.text(
             node[0], node[1] + 0.05,
-            f"Hidden {idx+1}",
+            f"Hidden {i+1}",
             ha='center',
             va='bottom',
             fontsize=10
         )
-    for idx, node in enumerate(nodes_output):
+    for i, node in enumerate(nodes_output):
         ax_gradient.add_patch(Circle(node, radius=0.03, color='red'))
         ax_gradient.text(
             node[0], node[1] - 0.05,
-            f"Output {idx+1}",
+            f"Output {i+1}",
             ha='center',
             va='top',
             fontsize=10
         )
-    # Plot edges with linewidth proportional to gradient magnitude
     for i in range(input_layer_size):
         for j in range(hidden_layer_size):
             gradient_magnitude = np.abs(mlp.gradients['dW1'][i, j])
